@@ -5,15 +5,6 @@ from typing import Dict, ItemsView
 
 _SPACE_MARKERS = ("\u0120", "\u2581")
 
-def normalize_token_text(raw_token: str) -> str:
-    """
-    Turn a raw vocab entry into the literal text it represents
-    """
-    for marker in _SPACE_MARKERS:
-        if raw_token.startswith(marker):
-            return " " + raw_token[len(marker):]
-    return raw_token
-
 
 class Vocabulary:
     """
@@ -48,7 +39,17 @@ class Vocabulary:
         raw = self._id_to_token.get(token_id)
         if raw is None:
             return ""
-        return normalize_token_text(raw)
+        return self.normalize_token_text(raw)
+
+    @staticmethod
+    def normalize_token_text(raw_token: str) -> str:
+        """
+        Turn a raw vocab entry into the literal text it represents
+        """
+        for marker in _SPACE_MARKERS:
+            if raw_token.startswith(marker):
+                return " " + raw_token[len(marker):]
+        return raw_token
 
     def items(self) -> ItemsView[int, str]:
         """

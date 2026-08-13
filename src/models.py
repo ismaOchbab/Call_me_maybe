@@ -9,12 +9,13 @@ class FunctionSchemaError(Exception):
 
 class FunctionSchema(BaseModel):
     """
-    Function schema
+    Function schema to contain the parsed input file
     """
     name: str
     description: str
     parameters: Dict[str, Dict[str, str]]
     returns: Dict[str, str]
+    model_config = {"extra": "forbid"}
 
     @model_validator(mode="after")
     def validate_func(self) -> "FunctionSchema":
@@ -33,6 +34,14 @@ class FunctionSchema(BaseModel):
                                     f" '{key}'"
                                     f" in function '{self.name}'"
                                 )
+        if 'type' not in self.returns:
+            raise FunctionSchemaError(
+                f"Missing return type in function '{self.name}' "
+            )
+        if self.returns['type'] not in ('number', 'string', 'boolean'):
+            raise FunctionSchemaError(
+                f"Unsupported return type in function '{self.name}'"
+            )
 
         return self
 
