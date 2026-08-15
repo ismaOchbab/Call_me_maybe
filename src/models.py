@@ -51,3 +51,12 @@ class Prompt(BaseModel):
     Single natural language prompt to translate into func call
     """
     prompt: str
+
+
+class OutputSchema(BaseModel):
+    """
+    Output layout for every element in the JSON array
+    """
+    prompt: str
+    name: str
+    parameters: Dict[str, object]
