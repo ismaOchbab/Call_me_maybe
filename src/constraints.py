@@ -1,5 +1,18 @@
 from typing import Sequence, List, Set
+
 from src.vocab import Vocabulary
+from src.models import FunctionSchema
+from src.io_utils import (load_functions, _read_json_array)
+
+from llm_sdk import Small_LLM_Model
+import numpy as np
+
+
+class GenerationError(Exception):
+    """
+    Raised when constrained generation cannot continue
+    """
+    pass
 
 
 def is_valid_prefix(value: str, choices: Sequence[str]) -> bool:
@@ -67,10 +80,12 @@ def select_best_token(masked_logits: Sequence[float]) -> int:
             f"Cannot select a token from empty logits"
         )
 
-    best_token_id = max(
-        range(len(masked_logits)),
-        key=lambda token_id: masked_logits[token_id]
-    )
+    # best_token_id = max(
+    #     range(len(masked_logits)),
+    #     key=lambda token_id: masked_logits[token_id]
+    # )
+    # best_token_id = np.argmax(np.array(masked_logits))
+    best_token_id = masked_logits.index(max(masked_logits))
 
     if masked_logits[best_token_id] == float("-inf"):
         raise ValueError(
@@ -78,3 +93,92 @@ def select_best_token(masked_logits: Sequence[float]) -> int:
         )
 
     return best_token_id
+
+
+def build_model_prompt(
+        user_prompt: str,
+        functions: List[FunctionSchema]
+) -> str:
+    """
+    Build the prompt given to LLM
+    """
+    function_lines = [
+        (
+            f"{func.name}: {func.description}; "
+            f"parameters={func.parameters}"
+        )
+        for func in functions
+    ]
+
+    return (
+        "Choose the correct function for the user request.\n"
+        "Available functions:\n"
+        + "\n".join(function_lines)
+        + f"\nUser request: {user_prompt}\n"
+        "Function name:"
+    )
+
+
+def generate_choice(
+        model: Small_LLM_Model,
+        vocab: Vocabulary,
+        prompt: str,
+        choices: Sequence[str],
+        max_tokens: int = 50
+) -> str:
+    """
+    Generate one value constrained to the provided choices
+    """
+    input_ids: List[int] = model.encode(prompt).tolist()[0]
+    generated = ""
+
+    for _ in range(max_tokens):
+        if is_complete_choice(generated, choices):
+            return generated
+
+        valid_ids = get_valid_choice_tokens_ids(
+            vocab=vocab,
+            current_value=generated,
+            choices=choices
+        )
+        if not valid_ids:
+            raise GenerationError(
+                f"No valid token available after '{generated}'"
+            )
+
+        logits = model.get_logits_from_input_ids(input_ids)
+
+        masked_logits = mask_logits(
+            logits=logits,
+            valid_token_ids=set(valid_ids)
+        )
+
+        next_token_id = select_best_token(masked_logits)
+        print(f"next_token_id = {next_token_id} --> {vocab.token_text(next_token_id)}")
+
+        input_ids.append(next_token_id)
+        generated += vocab.token_text(next_token_id)
+
+    raise GenerationError(
+        f"Generation exceeded {max_tokens} tokens"
+    )
+
+
+# test
+
+from pathlib import Path
+functions = load_functions(Path("data/input/functions_definition.json"))
+
+model = Small_LLM_Model()
+vocab = Vocabulary(model.get_path_to_vocab_file())
+
+user_prompt = "What is the sum of 2 and 3?"
+
+function_name = generate_choice(
+    model,
+    vocab,
+    prompt=build_model_prompt(user_prompt, functions),
+    choices=[func.name for func in functions],
+)
+
+print(function_name)
