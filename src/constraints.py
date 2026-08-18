@@ -172,7 +172,7 @@ functions = load_functions(Path("data/input/functions_definition.json"))
 model = Small_LLM_Model()
 vocab = Vocabulary(model.get_path_to_vocab_file())
 
-user_prompt = "What is the sum of 2 and 3?"
+user_prompt = "the quick brown fox"
 
 function_name = generate_choice(
     model,

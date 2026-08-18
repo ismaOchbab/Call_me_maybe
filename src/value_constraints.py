@@ -290,8 +290,16 @@ def generate_parameter_value(
         logits = model.get_logits_from_input_ids(input_ids)
         masked_logits = mask_logits(logits, valid_ids)
         next_token_id = select_best_token(masked_logits)
+        next_token_text = vocab.token_text(next_token_id)
 
         input_ids.append(next_token_id)
+
+        if (
+            next_token_text == delimiter
+            and is_complete_value(generated, parameter_type)
+        ):
+            return parse_value(generated, parameter_type)
+
         generated += vocab.token_text(next_token_id)
 
         if is_complete_value(generated, parameter_type):

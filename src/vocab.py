@@ -51,7 +51,7 @@ class Vocabulary:
                 return " " + raw_token[len(marker):]
         return raw_token
 
-    def items(self) -> Dict[int, str]:
+    def items(self) -> ItemsView[int, str]:
         """
         (id, raw_text) pairs for the whole vocab
         used by the decoder to scan every possible next token
