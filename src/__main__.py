@@ -91,6 +91,12 @@ def run(argv: List[str]) -> int:
     # log warning and continue
     results = []
     for test_prompt in prompts:
+        if not test_prompt.prompt.strip():
+            print(
+                "Warning: skipping empty prompt",
+                file=sys.stderr
+            )
+            continue
         try:
             name, parameters = call_function(
                 model, vocab, test_prompt.prompt, functions
