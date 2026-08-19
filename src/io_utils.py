@@ -1,23 +1,45 @@
+"""
+I/O utilities for loading and saving JSON data.
+
+This module provides functions to read function definitions and test prompts
+from JSON files, validate them using Pydantic models
+"""
+
+
 import json
+
 from pathlib import Path
-from typing import List
+from typing import List, Any
 from pydantic import ValidationError
 
 from src.models import (
     FunctionSchema,
     FunctionSchemaError,
-    Prompt,
-    OutputSchema
+    Prompt
 )
 
 
 class InputFileError(Exception):
-    """JSON input file error"""
+    """Raised when an input file is missing, malformed, or invalid."""
     pass
 
 
-def _read_json_array(path: Path) -> list:
-    """ reads a JSON array from disk"""
+def _read_json_array(path: Path) -> List[Any]:
+    """
+    Read and parse a JSON file that must contain a top-level array.
+
+    This is a helper used by both load_functions and load_test_prompts.
+    It handles file existence checks, JSON decoding, and type validation.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        The parsed JSON array (list of objects).
+
+    Raises:
+        InputFileError: If the file is missing, not valid JSON, or not an array
+    """
     if not path.is_file():
         raise InputFileError(
             f"File not found: {path}"
@@ -38,7 +60,16 @@ def _read_json_array(path: Path) -> list:
 
 def load_functions(path: Path) -> List[FunctionSchema]:
     """
-    Loads the functions definitions file as List of Dict
+    Load and validate the function definitions file
+
+    Args:
+        path: Path to the functions definition file
+
+    Returns:
+        List of validated FunctionSchema objects
+
+    Raises:
+        InputFileError: If any entry fails validation.
     """
     raw_items = _read_json_array(path)
     functions = []
@@ -54,7 +85,16 @@ def load_functions(path: Path) -> List[FunctionSchema]:
 
 def load_test_prompts(path: Path) -> List[Prompt]:
     """
-    loads the test prompts file as a list of Prompt
+    Load and validate the test prompts file.
+
+    Args:
+        path: Path to the prompts file
+
+    Returns:
+        List of validated Prompt objects
+
+    Raises:
+        InputFileError: If any entry fails validation
     """
     raw_items = _read_json_array(path)
     prompts = []
@@ -66,23 +106,3 @@ def load_test_prompts(path: Path) -> List[Prompt]:
                 f"{path}: entry {i} is invalid: {e}"
             ) from e
     return prompts
-
-
-def write_results(path: Path, results: OutputSchema) -> None:
-    """
-    Writes the generated function calls as a JSON array
-    """
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open(mode='w', encoding='utf-8') as f:
-            json.dump(
-                [result.model_dump() for result in results],
-                f,
-                indent=2,
-                ensure_ascii=False
-            )
-            f.write("\n")
-    except OSError as e:
-        raise InputFileError(
-            f"Cannot write {path}: {e}"
-        ) from e

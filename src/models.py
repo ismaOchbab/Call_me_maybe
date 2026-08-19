@@ -27,6 +27,7 @@ class FunctionSchema(BaseModel):
                     f" in function '{self.name}'"
                 )
             if self.parameters[key]['type'] not in ('number',
+                                                    'integer',
                                                     'string',
                                                     'boolean'):
                 raise FunctionSchemaError(
@@ -38,7 +39,10 @@ class FunctionSchema(BaseModel):
             raise FunctionSchemaError(
                 f"Missing return type in function '{self.name}' "
             )
-        if self.returns['type'] not in ('number', 'string', 'boolean'):
+        if self.returns['type'] not in ('number',
+                                        'integer',
+                                        'string',
+                                        'boolean'):
             raise FunctionSchemaError(
                 f"Unsupported return type in function '{self.name}'"
             )

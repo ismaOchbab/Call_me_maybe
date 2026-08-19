@@ -1,6 +1,5 @@
 .PHONY: install run debug clean lint lint-strict
 
-# Default paths, overridable: make run FUNCTIONS=... INPUT=... OUTPUT=...
 FUNCTIONS ?= data/input/functions_definition.json
 INPUT ?= data/input/function_calling_tests.json
 OUTPUT ?= data/output/function_calling_results.json
@@ -25,8 +24,8 @@ lint:
 	uv run mypy src/ --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
 
 lint-strict:
-	uv run flake8 .
-	uv run mypy . --strict
+	uv run flake8 src/
+	uv run mypy src/ --strict
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
