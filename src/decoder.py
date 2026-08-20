@@ -8,7 +8,7 @@ It returns the chosen function name and a dictionary of arguments.
 The template is filled by forcing literal tokens (braces, colons, quotes,
 commas) and letting the model generate the variable parts under constraints.
 """
-
+import numpy as np
 from typing import List, Tuple, Sequence, Any, Dict
 
 from src.grammar import EnumConstraint, NumberConstraint, StringConstraint
@@ -19,9 +19,9 @@ from src import monitor
 from llm_sdk import Small_LLM_Model
 
 # Maximum number of steps for each type of generation
-MAX_ENUM_STEPS = 30
+MAX_ENUM_STEPS = 20
 MAX_NUMBER_STEPS = 20
-MAX_STRING_STEPS = 30
+MAX_STRING_STEPS = 20
 
 
 def pick_best(model: Small_LLM_Model,
@@ -29,38 +29,66 @@ def pick_best(model: Small_LLM_Model,
               valid_ids: List[int]) -> int:
     """
     Select the token with the highest logit from the model among the
-    allowed (valid) token IDs.
-
-    This is a greedy approach: we call the model to get logits for the
-    next token given the current input_ids, and then we scan only the
-    tokens in valid_ids to find the one with the highest score.
-
-    args:
-        model: The LLM model instance (must have get_logits_from_input_ids).
-        input_ids: List of token IDs representing the full input so far
-                   (prompt + generated tokens).
-        valid_ids: List of token IDs that are allowed at this step.
-
-    return:
-        The token ID (among valid_ids) with the highest logit score.
-
-    Raises:
-        RuntimeError: If valid_ids is empty (no token available).
+    allowed (valid) token IDs using NumPy for vectorization.
     """
     if not valid_ids:
         raise RuntimeError(
             "No valid tokens available under current constraints."
         )
 
+    # Get raw logits from the model (returns List[float])
     logits: List[float] = model.get_logits_from_input_ids(input_ids)
 
-    best_id = valid_ids[0]
-    best_score = float("-inf")
-    for token_id in valid_ids:
-        if logits[token_id] > best_score:
-            best_score = logits[token_id]
-            best_id = token_id
-    return best_id
+    # Convert to NumPy array for efficient indexing
+    logits_array = np.array(logits)
+    valid_ids_array = np.array(valid_ids)
+
+    # Extract logits only for the valid token IDs
+    # This creates a smaller array containing only the scores we care about
+    valid_logits = logits_array[valid_ids_array]
+
+    # Find the index of the maximum score within the valid subset
+    best_local_idx = np.argmax(valid_logits)
+
+    # Map that index back to the actual token ID
+    return int(valid_ids_array[best_local_idx])
+# def pick_best(model: Small_LLM_Model,
+#               input_ids: List[int],
+#               valid_ids: List[int]) -> int:
+#     """
+#     Select the token with the highest logit from the model among the
+#     allowed (valid) token IDs.
+
+#     This is a greedy approach: we call the model to get logits for the
+#     next token given the current input_ids, and then we scan only the
+#     tokens in valid_ids to find the one with the highest score.
+
+#     args:
+#         model: The LLM model instance (must have get_logits_from_input_ids).
+#         input_ids: List of token IDs representing the full input so far
+#                    (prompt + generated tokens).
+#         valid_ids: List of token IDs that are allowed at this step.
+
+#     return:
+#         The token ID (among valid_ids) with the highest logit score.
+
+#     Raises:
+#         RuntimeError: If valid_ids is empty (no token available).
+#     """
+#     if not valid_ids:
+#         raise RuntimeError(
+#             "No valid tokens available under current constraints."
+#         )
+
+#     logits: List[float] = model.get_logits_from_input_ids(input_ids)
+
+#     best_id = valid_ids[0]
+#     best_score = float("-inf")
+#     for token_id in valid_ids:
+#         if logits[token_id] > best_score:
+#             best_score = logits[token_id]
+#             best_id = token_id
+#     return best_id
 
 
 def append_literal(model: Small_LLM_Model,
@@ -311,82 +339,84 @@ def generate_string(
     return constraint.resolved_value(), ids
 
 
-# def build_prompt_text(
-#         prompt: str,
-#         functions: Sequence[FunctionSchema]
-# ) -> str:
-#     """Build the natural-language context shown to the model: the
-#     task description, the available functions, and the user's request.
-#     """
-#     lines: List[str] = []
-
-#     lines = [
-#         "You are a function calling assistant.",
-#         "Given the user's request,",
-#         "choose the best function and provide the arguments.",
-#         "Available functions:"
-#     ]
-#     for fn in functions:
-#         param_names = ", ".join(fn.parameters.keys())
-#         lines.append(f"- {fn.name}({param_names}): {fn.description}")
-#     lines.append(f'User request: "{prompt}"')
-#     return "\n".join(lines)
-
 def build_prompt_text(
         prompt: str,
         functions: Sequence[FunctionSchema]
 ) -> str:
+    """Build the natural-language context shown to the model: the
+    task description, the available functions, and the user's request.
     """
-    Build the natural-language context shown to the model.
-    We explicitly instruct the model to output the function name and arguments
-    in a clean, predictable format.
+    lines: List[str] = []
 
-    The prompt includes:
-        - A role description (function-calling assistant).
-        - A list of available functions with their signatures and descriptions.
-        - The user request prompt
-        - Clear instructions for what to output: the function name and
-          arguments, without extra prose.
-
-    The last line is "Function name:" to prime the model to start generating
-    the name immediately.
-
-    Args:
-        prompt: The user's natural-language request.
-        functions: The available function schemas.
-
-    Returns:
-        The complete prompt string.
-    """
-    lines: List[str] = [
-        "You are an AI assistant that extracts ",
-        "function calls from user requests."
-        "You have access to the following functions:"
+    lines = [
+        "You are a function calling assistant.",
+        "Given the user's request,",
+        "Choose the best function and provide the arguments.",
+        "Make no mistakes.",
+        "Available functions:"
     ]
-
     for fn in functions:
-        # Build a detailed signature string
-        params_str = ", ".join(
-            [f"{k}: {v['type']}" for k, v in fn.parameters.items()])
-        lines.append(f"  - {fn.name}({params_str}) -> {fn.returns['type']}")
-        lines.append(f"    Description: {fn.description}")
-
-    lines.append("")
-    lines.append(f"User request: \"{prompt}\"")
-    lines.append("")
-    lines.append("Instructions:")
-    lines.append("1. Choose the best function for the request.")
-    lines.append("2. Provide the arguments exactly as requested.")
-    lines.append(
-        "Return the shortest exact value that satisfies the request."
-        )
-    lines.append(
-        "Do not repeat words, patterns, alternatives, or replacement text."
-        )
-    lines.append("")
-    lines.append("Function name:")
-
+        param_names = ", ".join(fn.parameters.keys())
+        lines.append(f"- {fn.name}({param_names}): {fn.description}")
+    lines.append(f'User request: "{prompt}"')
     return "\n".join(lines)
+
+# def build_prompt_text(
+#         prompt: str,
+#         functions: Sequence[FunctionSchema]
+# ) -> str:
+#     """
+#     Build the natural-language context shown to the model.
+#     We explicitly instruct the model to output the function name
+#     and arguments in a clean, predictable format.
+
+#     The prompt includes:
+#         - A role description (function-calling assistant).
+#         - A list of available functions
+#           with their signatures and descriptions.
+#         - The user request prompt
+#         - Clear instructions for what to output: the function name and
+#           arguments, without extra prose.
+
+#     The last line is "Function name:" to prime the model to start generating
+#     the name immediately.
+
+#     Args:
+#         prompt: The user's natural-language request.
+#         functions: The available function schemas.
+
+#     Returns:
+#         The complete prompt string.
+#     """
+#     lines: List[str] = [
+#         "You are an AI assistant that extracts ",
+#         "function calls from user requests."
+#         "You have access to the following functions:"
+#     ]
+
+#     for fn in functions:
+#         # Build a detailed signature string
+#         params_str = ", ".join(
+#             [f"{k}: {v['type']}" for k, v in fn.parameters.items()])
+#         lines.append(f"  - {fn.name}({params_str}) -> {fn.returns['type']}")
+#         lines.append(f"    Description: {fn.description}")
+
+#     lines.append("")
+#     lines.append(f"User request: \"{prompt}\"")
+#     lines.append("")
+#     lines.append("Instructions:")
+#     lines.append("1.Choose the best function for the request.")
+#     lines.append("2.Provide the arguments exactly as requested.")
+#     lines.append(
+#         "3.Return the shortest exact value that satisfies the request."
+#         )
+#     lines.append(
+#         "4.Do not repeat words, patterns, alternatives, or replacement text."
+#         )
+#     lines.append("")
+#     lines.append("Function name:")
+
+#     return "\n".join(lines)
 
 
 def call_function(
